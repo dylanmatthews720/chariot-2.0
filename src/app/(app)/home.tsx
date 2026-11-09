@@ -6,7 +6,8 @@
 // It reads the profile row so we can greet by name and know whether this person
 // is already an approved driver.
 
-import { useEffect, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -55,29 +56,42 @@ const driverPrompt: Record<
 
 export default function RiderHomeScreen() {
   const { session } = useSession();
+  const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  // True when the profile load failed. We keep this separate from "profile is
+  // null" so a transient network error is not mistaken for driver_status 'none'.
+  const [failed, setFailed] = useState(false);
   // A small inline message for actions that are not wired up yet.
   const [note, setNote] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadProfile = useCallback(async () => {
     if (!session) return;
+    setLoading(true);
+    setFailed(false);
     // Read our own profile row. RLS lets any signed-in user read profiles.
-    supabase
+    const { data, error } = await supabase
       .from("profiles")
       .select("full_name, driver_status")
       .eq("id", session.user.id)
-      .single()
-      .then(({ data }) => {
-        setProfile(data);
-        setLoading(false);
-      });
+      .single();
+    // On error we flag failure instead of silently falling back to a 'none'
+    // status, which would show an approved driver the wrong prompt.
+    if (error) {
+      setFailed(true);
+    } else {
+      setProfile(data);
+    }
+    setLoading(false);
   }, [session]);
 
-  // First name only, for a friendlier greeting. Falls back to "Spartan".
-  const firstName = profile?.full_name?.trim().split(" ")[0] || "Spartan";
-  const status = profile?.driver_status ?? "none";
-  const prompt = driverPrompt[status];
+  // Reload the profile every time this screen regains focus, so returning from
+  // the apply flow immediately reflects the new "under review" status.
+  useFocusEffect(
+    useCallback(() => {
+      loadProfile();
+    }, [loadProfile])
+  );
 
   if (loading) {
     return (
@@ -86,6 +100,23 @@ export default function RiderHomeScreen() {
       </View>
     );
   }
+
+  // The load failed (or returned nothing). Show a retry instead of guessing.
+  if (failed || !profile) {
+    return (
+      <View style={[styles.container, styles.center]}>
+        <Text style={styles.errorText}>We could not load your profile.</Text>
+        <Pressable style={styles.retryButton} onPress={loadProfile}>
+          <Text style={styles.retryButtonText}>Try again</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  // Past the guards, profile is loaded. First name only, for a friendlier
+  // greeting; falls back to "Spartan" if the name is not set.
+  const firstName = profile.full_name?.trim().split(" ")[0] || "Spartan";
+  const prompt = driverPrompt[profile.driver_status];
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -114,7 +145,15 @@ export default function RiderHomeScreen() {
         {prompt.cta && (
           <Pressable
             style={styles.driverButton}
-            onPress={() => setNote(`"${prompt.cta}" is coming in a later step.`)}
+            onPress={() => {
+              // Approved drivers head to driver mode (a later step); everyone
+              // else (none / rejected) goes to the apply flow.
+              if (profile.driver_status === "approved") {
+                setNote("Driver mode is coming in a later step.");
+              } else {
+                router.push("/apply-driver");
+              }
+            }}
           >
             <Text style={styles.driverButtonText}>{prompt.cta}</Text>
           </Pressable>
@@ -216,5 +255,22 @@ const styles = StyleSheet.create({
     color: "#9aa0a6",
     fontSize: 14,
     fontWeight: "600",
+  },
+  errorText: {
+    fontSize: 16,
+    color: "#5f6368",
+    marginBottom: 16,
+    textAlign: "center",
+  },
+  retryButton: {
+    backgroundColor: "#0055A2",
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+  },
+  retryButtonText: {
+    color: "#ffffff",
+    fontSize: 15,
+    fontWeight: "700",
   },
 });
