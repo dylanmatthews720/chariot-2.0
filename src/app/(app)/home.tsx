@@ -125,10 +125,10 @@ export default function RiderHomeScreen() {
         <Text style={styles.subgreeting}>Where are you headed?</Text>
       </View>
 
-      {/* Primary action: request a ride. The request flow itself is the next step. */}
+      {/* Primary action: open the map to set a pickup and request a ride. */}
       <Pressable
         style={styles.requestCard}
-        onPress={() => setNote("Ride requests arrive in the next step.")}
+        onPress={() => router.push("/request-ride")}
       >
         <Text style={styles.requestTitle}>Request a ride</Text>
         <Text style={styles.requestBody}>

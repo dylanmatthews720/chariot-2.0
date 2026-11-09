@@ -91,7 +91,8 @@ export default function ApplyDriverScreen() {
       if (error) throw error;
 
       // Back to home, which re-reads the profile and now shows "under review".
-      router.back();
+      if (router.canGoBack()) router.back();
+      else router.replace("/home");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not submit application.");
     } finally {
@@ -102,7 +103,12 @@ export default function ApplyDriverScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={8}>
+        <Pressable
+          onPress={() =>
+            router.canGoBack() ? router.back() : router.replace("/home")
+          }
+          hitSlop={8}
+        >
           <Text style={styles.cancel}>Cancel</Text>
         </Pressable>
         <Text style={styles.headerTitle}>Apply to drive</Text>
